@@ -1,5 +1,7 @@
 let db = null;
 
+const DEFAULT_PROFILE_IMAGE = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
+
 const DB = {
     async init() {
         return new Promise((resolve, reject) => {
@@ -8,7 +10,7 @@ const DB = {
                 return;
             }
 
-            const request = indexedDB.open('animeDB', 1);
+            const request = indexedDB.open('animeDB', 2); // Increased version for schema update
 
             request.onerror = () => {
                 console.error('Error opening database:', request.error);
@@ -27,6 +29,8 @@ const DB = {
                     const userStore = database.createObjectStore('users', { keyPath: 'username' });
                     userStore.createIndex('username_idx', 'username', { unique: true });
                     userStore.createIndex('email', 'email', { unique: true });
+                    // Add profileImage field
+                    userStore.createIndex('profileImage', 'profileImage', { unique: false });
                 }
 
                 if (!database.objectStoreNames.contains('favorites')) {
@@ -80,11 +84,38 @@ const DB = {
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
+    },
+
+    // Nuevo método para actualizar la imagen de perfil
+    async updateProfileImage(username, imageData) {
+        const database = await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction(['users'], 'readwrite');
+            const store = transaction.objectStore('users');
+
+            const request = store.get(username);
+            request.onsuccess = () => {
+                const user = request.result;
+                if (!user) {
+                    reject(new Error('User not found'));
+                    return;
+                }
+
+                user.profileImage = imageData;
+                const updateRequest = store.put(user);
+                updateRequest.onsuccess = () => {
+                    Auth._setCurrentUser(user);
+                    resolve(user);
+                };
+                updateRequest.onerror = () => reject(updateRequest.error);
+            };
+            request.onerror = () => reject(request.error);
+        });
     }
 };
 
 const Auth = {
-    async register(username, email, password) {
+    async register(username, email, password, profileImage = null) {
         console.log('Starting registration process...');
         
         try {
@@ -109,6 +140,7 @@ const Auth = {
                         username,
                         email,
                         password: hashedPassword,
+                        profileImage: profileImage || DEFAULT_PROFILE_IMAGE,
                         createdAt: new Date().toISOString()
                     };
                     

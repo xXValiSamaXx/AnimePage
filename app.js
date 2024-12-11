@@ -17,7 +17,7 @@ $(document).ready(async function() {
     // Inicializar las extensiones de jQuery
     jQueryExtensions.initJQueryExtensions();
     
-    // Tu código existente
+    // Inicializar componentes
     initializeUI();
     initializeTheme();
     initializeAuth();
@@ -26,6 +26,8 @@ $(document).ready(async function() {
     // Aplicar las extensiones después de la inicialización
     jQueryExtensions.applyJQueryExtensions();
     
+    // Iniciar con la temporada actual
+    lastSearchParams = null;
     await searchAnime(currentPage);
 });
 
@@ -191,65 +193,188 @@ function setupEventListeners() {
     });
 }
 
-// Update UI based on authentication state
+// Inicialización de componentes del perfil
+function initializeProfileComponents() {
+    // Manejo del dropdown del perfil
+    const profileDropdown = document.getElementById('profileDropdown');
+    const profileMenu = document.getElementById('profileMenu');
+    
+    if (profileDropdown) {
+        profileDropdown.addEventListener('click', function(e) {
+            e.stopPropagation();
+            profileMenu.classList.toggle('hidden');
+        });
+    }
+
+    // Cerrar el dropdown al hacer click fuera
+    document.addEventListener('click', function(e) {
+        if (profileMenu && !profileMenu.contains(e.target) && 
+            !e.target.matches('#profileDropdown, #profileDropdown *')) {
+            profileMenu.classList.add('hidden');
+        }
+    });
+
+    // Manejo del modal de perfil
+    const openProfileBtn = document.getElementById('openProfile');
+    const profileModal = document.getElementById('profileModal');
+    
+    if (openProfileBtn) {
+        openProfileBtn.addEventListener('click', function() {
+            profileMenu.classList.add('hidden');
+            if (profileModal) {
+                profileModal.classList.remove('hidden');
+                profileModal.classList.add('flex');
+            }
+        });
+    }
+}
+
+// Manejo de la imagen de perfil en el registro
+function initializeProfileImageHandlers() {
+    const uploadImageBtn = document.getElementById('uploadImageBtn');
+    const profileImageInput = document.getElementById('profileImage');
+    const previewImage = document.getElementById('previewImage');
+    
+    if (uploadImageBtn && profileImageInput) {
+        uploadImageBtn.addEventListener('click', function() {
+            profileImageInput.click();
+        });
+
+        profileImageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    if (previewImage) {
+                        previewImage.src = e.target.result;
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+}
+
+// Modificar el manejo del formulario de registro
+function initializeRegistrationForm() {
+    const registerForm = document.getElementById('registerForm');
+    
+    if (registerForm) {
+        registerForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            try {
+                const username = this.username.value;
+                const email = this.email.value;
+                const password = this.password.value;
+                const profileImageInput = document.getElementById('profileImage');
+                const previewImage = document.getElementById('previewImage');
+                
+                let profileImage = previewImage?.src || "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
+
+                // Registrar usuario
+                await Auth.register(username, email, password, profileImage);
+                
+                // Cerrar modal y mostrar mensaje
+                const registerModal = document.getElementById('registerModal');
+                if (registerModal) {
+                    registerModal.classList.add('hidden');
+                    registerModal.classList.remove('flex');
+                }
+                
+                showMessage('Registration successful!', 'success');
+                
+                // Actualizar UI
+                updateAuthUI();
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        });
+    }
+}
+
+// Actualizar UI cuando cambia el estado de autenticación
 function updateAuthUI() {
     const isLoggedIn = Auth.isLoggedIn();
     const user = Auth.getCurrentUser();
 
-    // Mostrar/ocultar contenido basado en el estado de autenticación
-    $('.logged-in-content').toggleClass('hidden', !isLoggedIn);
-    $('.logged-out-content').toggleClass('hidden', isLoggedIn);
+    const loggedInContent = document.querySelector('.logged-in-content');
+    const loggedOutContent = document.querySelector('.logged-out-content');
+    const usernameDisplay = document.querySelector('.username-display');
+    const userAvatar = document.getElementById('userAvatar');
 
-    if (isLoggedIn) {
-        // Actualizar el nombre de usuario
-        $('.username-display').text(`${user.username}`);
-    }
+    if (loggedInContent) loggedInContent.classList.toggle('hidden', !isLoggedIn);
+    if (loggedOutContent) loggedOutContent.classList.toggle('hidden', isLoggedIn);
 
-    // Actualizar botones de favoritos
-    $('.favorite-btn').each(function() {
-        $(this).prop('disabled', !isLoggedIn);
-        if (!isLoggedIn) {
-            $(this).attr('title', 'Login to add favorites');
+    if (isLoggedIn && user) {
+        if (usernameDisplay) usernameDisplay.textContent = user.username;
+        if (userAvatar) {
+            userAvatar.src = user.profileImage || "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
         }
-    });
-
-    // Actualizar botones de watch
-    $('.watch-btn').each(function() {
-        $(this).prop('disabled', !isLoggedIn);
-        if (!isLoggedIn) {
-            $(this).attr('title', 'Login to watch');
-        }
-    });
-
-    // Refrescar favoritos si está logueado
-    if (isLoggedIn) {
-        refreshFavorites();
     }
+}
+
+// Inicialización
+document.addEventListener('DOMContentLoaded', function() {
+    initializeProfileComponents();
+    initializeProfileImageHandlers();
+    initializeRegistrationForm();
+    updateAuthUI();
+});
+
+// Event listener para actualizaciones de estado de autenticación
+window.addEventListener('authStateChanged', updateAuthUI);
+
+// Funciones para mostrar y ocultar el loading
+function showLoading() {
+    const $loading = $('.loading');
+    $loading.removeClass('hidden').addClass('flex');
+    // Prevenir scroll mientras está cargando
+    $('body').css('overflow', 'hidden');
+}
+
+function hideLoading() {
+    const $loading = $('.loading');
+    $loading.addClass('hidden').removeClass('flex');
+    // Restaurar scroll
+    $('body').css('overflow', '');
 }
 
 // Search Implementation
 async function searchAnime(page = 1) {
-    $('.loading').fadeIn(300);
+    showLoading();
     
-    const params = lastSearchParams || collectSearchParams();
-    params.page = page;
-    params.limit = 12;
-
     try {
-        const cacheKey = JSON.stringify({...params, page});
-        if (searchCache.has(cacheKey)) {
-            const cachedData = searchCache.get(cacheKey);
-            lastSearchResults = cachedData;
-            displayResults(cachedData);
-            displayPagination(cachedData.pagination);
-            updateActiveFilters(params);
-            $('.loading').fadeOut(300);
-            return;
+        let url;
+        let data;
+        
+        // Si hay parámetros de búsqueda, usar la búsqueda normal
+        if (lastSearchParams && (lastSearchParams.q || lastSearchParams.type || lastSearchParams.status || 
+            lastSearchParams.rating || lastSearchParams.genres || lastSearchParams.genres_exclude)) {
+            const params = lastSearchParams;
+            params.page = page;
+            params.limit = 12;
+            
+            const cacheKey = JSON.stringify({...params, page});
+            if (searchCache.has(cacheKey)) {
+                const cachedData = searchCache.get(cacheKey);
+                lastSearchResults = cachedData.data;
+                displayResults(cachedData.data);
+                displayPagination(cachedData.pagination);
+                updateActiveFilters(params);
+                hideLoading();
+                return;
+            }
+
+            const queryString = new URLSearchParams(params).toString();
+            url = `${JIKAN_API}/anime?${queryString}`;
+        } else {
+            // Si no hay parámetros, mostrar la temporada actual
+            url = `${JIKAN_API}/seasons/now?page=${page}&limit=12`;
         }
 
-        const queryString = new URLSearchParams(params).toString();
-        const response = await fetch(`${JIKAN_API}/anime?${queryString}`);
-        const data = await response.json();
+        const response = await fetch(url);
+        data = await response.json();
 
         // Rate limiting handling
         if (response.status === 429) {
@@ -259,19 +384,108 @@ async function searchAnime(page = 1) {
         }
 
         // Cache the results
-        searchCache.set(cacheKey, data.data);
+        if (lastSearchParams) {
+            const cacheKey = JSON.stringify({...lastSearchParams, page});
+            searchCache.set(cacheKey, data);
+        }
 
         lastSearchResults = data.data;
         displayResults(data.data);
-        displayPagination(data.pagination);
-        updateActiveFilters(params);
+        if (data.pagination) {
+            displayPagination(data.pagination);
+        }
+        
+        if (lastSearchParams) {
+            updateActiveFilters(lastSearchParams);
+        }
 
-        $('.loading').fadeOut(300);
     } catch (error) {
         console.error('Error:', error);
-        $('.loading').fadeOut(300);
         showMessage('An error occurred while fetching the data.', 'error');
+    } finally {
+        hideLoading();
     }
+}
+
+// Display Pagination
+function displayPagination(pagination) {
+    if (!pagination) return;
+
+    const $pagination = $('#pagination');
+    $pagination.empty();
+
+    const maxButtons = 5;
+    const lastPage = pagination.last_visible_page || 1;
+    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(lastPage, startPage + maxButtons - 1);
+
+    if (endPage - startPage + 1 < maxButtons) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    // Previous button
+    if (currentPage > 1) {
+        $pagination.append(`
+            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
+                    data-page="${currentPage - 1}">
+                Previous
+            </button>
+        `);
+    }
+
+    // First page
+    if (startPage > 1) {
+        $pagination.append(`
+            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
+                    data-page="1">1</button>
+        `);
+        if (startPage > 2) {
+            $pagination.append('<span class="px-3 py-2">...</span>');
+        }
+    }
+
+    // Page numbers
+    for (let i = startPage; i <= endPage; i++) {
+        const isActive = i === currentPage;
+        $pagination.append(`
+            <button class="px-4 py-2 ${isActive ? 'bg-blue-800' : 'bg-blue-600'} 
+                         text-white rounded hover:bg-blue-700 transition" 
+                    data-page="${i}">
+                ${i}
+            </button>
+        `);
+    }
+
+    // Last page
+    if (endPage < lastPage) {
+        if (endPage < lastPage - 1) {
+            $pagination.append('<span class="px-3 py-2">...</span>');
+        }
+        $pagination.append(`
+            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
+                    data-page="${lastPage}">${lastPage}</button>
+        `);
+    }
+
+    // Next button
+    if (pagination.has_next_page || currentPage < lastPage) {
+        $pagination.append(`
+            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
+                    data-page="${currentPage + 1}">
+                Next
+            </button>
+        `);
+    }
+
+    // Add click handlers
+    $pagination.find('button').on('click', function() {
+        const newPage = parseInt($(this).data('page'));
+        if (newPage !== currentPage) {
+            currentPage = newPage;
+            searchAnime(currentPage);
+            $('html, body').animate({ scrollTop: 0 }, 'slow');
+        }
+    });
 }
 
 // Display Results with Animation
@@ -450,6 +664,11 @@ async function handleWatch(anime) {
 
 // Toggle Favorite
 async function toggleFavorite(anime) {
+    if (!Auth.isLoggedIn()) {
+        showMessage('Please login to add favorites', 'warning');
+        return;
+    }
+
     try {
         const favorites = await DB.getFavorites();
         const isFavorite = favorites.some(f => f.mal_id === anime.mal_id);
@@ -468,7 +687,7 @@ async function toggleFavorite(anime) {
             showMessage('Added to favorites', 'success');
         }
         
-        refreshFavorites();
+        await refreshFavorites();
     } catch (error) {
         console.error('Error toggling favorite:', error);
         showMessage('Error updating favorites', 'error');
@@ -600,82 +819,6 @@ function initializeUI() {
     setupModalHandlers();
 }
 
-// Display Pagination
-function displayPagination(pagination) {
-    const $pagination = $('#pagination');
-    $pagination.empty();
-
-    const maxButtons = 5;
-    const lastPage = pagination.last_visible_page;
-    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-    let endPage = Math.min(lastPage, startPage + maxButtons - 1);
-
-    if (endPage - startPage + 1 < maxButtons) {
-        startPage = Math.max(1, endPage - maxButtons + 1);
-    }
-
-    // Previous button
-    if (currentPage > 1) {
-        $pagination.append(`
-            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
-                    data-page="${currentPage - 1}">
-                Previous
-            </button>
-        `);
-    }
-
-    // First page
-    if (startPage > 1) {
-        $pagination.append(`
-            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
-                    data-page="1">1</button>
-        `);
-        if (startPage > 2) {
-            $pagination.append('<span class="px-3 py-2">...</span>');
-        }
-    }
-
-    // Page numbers
-    for (let i = startPage; i <= endPage; i++) {
-        const isActive = i === currentPage;
-        $pagination.append(`
-            <button class="px-4 py-2 ${isActive ? 'bg-blue-800' : 'bg-blue-600'} 
-                         text-white rounded hover:bg-blue-700 transition" 
-                    data-page="${i}">
-                ${i}
-            </button>
-        `);
-    }
-
-    // Last page
-    if (endPage < lastPage) {
-        if (endPage < lastPage - 1) {
-            $pagination.append('<span class="px-3 py-2">...</span>');
-        }
-        $pagination.append(`
-            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
-                    data-page="${lastPage}">${lastPage}</button>
-        `);
-    }
-
-    // Next button
-    if (currentPage < lastPage) {
-        $pagination.append(`
-            <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition" 
-                    data-page="${currentPage + 1}">
-                Next
-            </button>
-        `);
-    }
-
-    // Add click handlers
-    $pagination.find('button').on('click', function() {
-        currentPage = parseInt($(this).data('page'));
-        searchAnime(currentPage);
-        $('html, body').animate({ scrollTop: 0 }, 'slow');
-    });
-}
-
 // Show No Results Message
 function showNoResults() {
     const $results = $('#results');
@@ -753,21 +896,211 @@ function handleSearch() {
     searchAnime(currentPage);
 }
 
-// Refresh Favorites
+// Función para refrescar los favoritos
 async function refreshFavorites() {
     try {
+        if (!Auth.isLoggedIn()) return;
+        
         const favorites = await DB.getFavorites();
         const favoriteIds = new Set(favorites.map(f => f.mal_id));
         
+        // Actualizar botones de favoritos en la lista/grid principal
         $('.favorite-btn').each(function() {
-            const animeId = $(this).closest('[data-anime-id]').data('animeId');
+            const animeId = parseInt($(this).closest('[data-anime-id]').data('animeId'));
             if (favoriteIds.has(animeId)) {
                 $(this).addClass('bg-red-500 text-white').removeClass('bg-red-100 text-red-600');
             } else {
                 $(this).removeClass('bg-red-500 text-white').addClass('bg-red-100 text-red-600');
             }
         });
+
+        // Actualizar la lista de favoritos en el modal de perfil
+        const $favoritesList = $('#favoritesList');
+        if ($favoritesList.length) {
+            $favoritesList.empty();
+            
+            favorites.forEach(favorite => {
+                const favoriteCard = `
+                    <div class="favorite-card bg-white dark:bg-gray-700 rounded-lg shadow overflow-hidden">
+                        <img src="${favorite.image_url}" alt="${favorite.title}" 
+                             class="w-full h-32 object-cover">
+                        <div class="p-2">
+                            <h4 class="text-sm font-semibold truncate dark:text-white">${favorite.title}</h4>
+                            <div class="flex justify-between items-center mt-2">
+                                <span class="text-xs dark:text-gray-300">${favorite.type || 'N/A'}</span>
+                                <button class="remove-favorite text-red-500 hover:text-red-700" 
+                                        data-anime-id="${favorite.mal_id}">
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                $favoritesList.append(favoriteCard);
+            });
+
+            // Actualizar los gráficos si existen
+            updateProfileCharts(favorites);
+        }
     } catch (error) {
         console.error('Error refreshing favorites:', error);
+        showMessage('Error updating favorites display', 'error');
+    }
+}
+
+// Función para actualizar los gráficos del perfil
+function updateProfileCharts(favorites) {
+    try {
+        // Asegurarse de que tenemos favoritos para mostrar
+        if (!favorites || !favorites.length) return;
+
+        // Configuración del tema
+        const isDark = document.documentElement.classList.contains('dark');
+        const textColor = isDark ? 'white' : 'black';
+
+        // Gráfico de tipos
+        const typeData = _.groupBy(favorites, 'type');
+        const typeChartElement = document.getElementById('typeChart');
+        
+        if (typeChartElement) {
+            // Destruir el gráfico existente si lo hay
+            const existingChart = Chart.getChart(typeChartElement);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+
+            new Chart(typeChartElement, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(typeData),
+                    datasets: [{
+                        data: Object.values(typeData).map(group => group.length),
+                        backgroundColor: [
+                            '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+                            '#8B5CF6', '#EC4899', '#6366F1'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: textColor,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Distribution by Type',
+                            color: textColor
+                        }
+                    }
+                }
+            });
+        }
+
+        // Gráfico de puntuaciones
+        const scoreData = favorites.reduce((acc, fav) => {
+            if (fav.score) {
+                const score = Math.floor(fav.score);
+                acc[score] = (acc[score] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        const scoreChartElement = document.getElementById('scoreChart');
+        if (scoreChartElement) {
+            // Destruir el gráfico existente si lo hay
+            const existingChart = Chart.getChart(scoreChartElement);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+
+            new Chart(scoreChartElement, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(scoreData),
+                    datasets: [{
+                        label: 'Number of Anime',
+                        data: Object.values(scoreData),
+                        backgroundColor: '#3B82F6',
+                        borderColor: '#2563EB',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: textColor,
+                                stepSize: 1
+                            },
+                            grid: {
+                                color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: textColor
+                            },
+                            grid: {
+                                color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: textColor
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Score Distribution',
+                            color: textColor
+                        }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error updating charts:', error);
+        showMessage('Error updating profile charts', 'error');
+    }
+}
+
+// Event listener para eliminar favoritos desde el perfil
+$(document).on('click', '.remove-favorite', async function() {
+    const animeId = $(this).data('anime-id');
+    try {
+        await DB.removeFavorite(animeId);
+        await refreshFavorites();
+        showMessage('Removed from favorites', 'success');
+    } catch (error) {
+        console.error('Error removing favorite:', error);
+        showMessage('Error removing favorite', 'error');
+    }
+});
+
+// Asegurarse de que los favoritos se actualicen cuando cambia el estado de autenticación
+window.addEventListener('authStateChanged', refreshFavorites);
+
+// Llamar a refreshFavorites después de login exitoso
+async function handleLogin(username, password) {
+    try {
+        await Auth.login(username, password);
+        $('#loginModal').addClass('hidden').removeClass('flex');
+        showMessage('Login successful!', 'success');
+        await refreshFavorites(); // Actualizar favoritos después del login
+    } catch (error) {
+        showMessage(error.message, 'error');
     }
 }

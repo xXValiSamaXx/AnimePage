@@ -7,6 +7,8 @@
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
@@ -192,8 +194,16 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen">
     <!-- Loading Indicator -->
-    <div class="loading flex">
-        <div class="text-2xl">Loading...</div>
+    <div class="loading fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center backdrop-blur-sm transition-all duration-300">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-8 flex flex-col items-center shadow-xl">
+            <!-- Spinner Animation -->
+            <div class="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mb-4"></div>
+            
+            <!-- Loading Text -->
+            <div class="text-lg font-medium text-gray-700 dark:text-gray-200">
+                Cargando...
+            </div>
+        </div>
     </div>
 
     <!-- Auth Modals -->
@@ -239,82 +249,123 @@
         </div>
     </div>
 
-    <div id="registerModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Register</h2>
-                <button type="button" class="close-modal text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">
-                    ×
+<!-- Register Modal -->
+<div id="registerModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Register</h2>
+            <button type="button" class="close-modal text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">
+                ×
+            </button>
+        </div>
+        <form id="registerForm" class="space-y-4 text-gray-900 dark:text-white">
+            <!-- Imagen de perfil -->
+            <div class="flex flex-col items-center mb-4">
+                <img id="previewImage" 
+                     src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU" 
+                     alt="Profile Preview" 
+                     class="w-24 h-24 rounded-full object-cover mb-2">
+                <input type="file" 
+                       id="profileImage" 
+                       name="profileImage" 
+                       accept="image/*" 
+                       class="hidden">
+                <button type="button" 
+                        id="uploadImageBtn"
+                        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors">
+                    Subir Imagen
                 </button>
             </div>
-            <form id="registerForm" class="space-y-4 text-gray-900 dark:text-white">
-                <div>
-                    <label class="block text-sm font-medium">Username</label>
-                    <input type="text" name="username" autocomplete="username" required 
-                           class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
-                                  px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
-                                  transition-colors duration-200">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Email</label>
-                    <input type="email" name="email" autocomplete="email" required 
-                           class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
-                                  px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
-                                  transition-colors duration-200">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Password</label>
-                    <input type="password" name="password" autocomplete="new-password" required 
-                           class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
-                                  px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
-                                  transition-colors duration-200">
-                </div>
-                <div class="flex justify-between pt-4">
-                    <button type="submit" 
-                            class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 
-                                   transition-colors duration-200">
-                        Register
-                    </button>
-                    <button type="button" 
-                            class="close-modal px-6 py-2 border border-gray-300 dark:border-gray-600 
-                                   text-gray-900 dark:text-white rounded hover:bg-gray-100 
-                                   dark:hover:bg-gray-700 transition-colors duration-200">
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- Main Header -->
-    <header class="bg-blue-600 text-white p-4 mb-4">
-        <div class="container mx-auto relative">
-            <!-- Auth Buttons -->
-            <div id="authButtons" class="absolute top-2 right-16 z-10">
-                <div class="logged-in-content hidden">
-                    <div class="flex items-center space-x-4">
-                        <button id="profileBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+            <!-- Campos del formulario -->
+            <div>
+                <label class="block text-sm font-medium">Username</label>
+                <input type="text" name="username" autocomplete="username" required 
+                       class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
+                              px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                              focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
+                              transition-colors duration-200">
+            </div>
+            <div>
+                <label class="block text-sm font-medium">Email</label>
+                <input type="email" name="email" autocomplete="email" required 
+                       class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
+                              px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                              focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
+                              transition-colors duration-200">
+            </div>
+            <div>
+                <label class="block text-sm font-medium">Password</label>
+                <input type="password" name="password" autocomplete="new-password" required 
+                       class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600
+                              px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                              focus:border-blue-500 focus:ring-blue-500 dark:focus:border-blue-400
+                              transition-colors duration-200">
+            </div>
+            <div class="flex justify-between pt-4">
+                <button type="submit" 
+                        class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 
+                               transition-colors duration-200">
+                    Register
+                </button>
+                <button type="button" 
+                        class="close-modal px-6 py-2 border border-gray-300 dark:border-gray-600 
+                               text-gray-900 dark:text-white rounded hover:bg-gray-100 
+                               dark:hover:bg-gray-700 transition-colors duration-200">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Main Header -->
+<header class="bg-blue-600 text-white p-4 mb-4">
+    <div class="container mx-auto relative">
+        <!-- Auth Buttons -->
+        <div id="authButtons" class="absolute top-2 right-16 z-10">
+            <!-- Logged In Content -->
+            <div class="logged-in-content hidden">
+                <div class="relative">
+                    <button id="profileDropdown" class="flex items-center space-x-2 bg-transparent hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors">
+                        <img id="userAvatar" 
+                             src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU" 
+                             alt="Profile" 
+                             class="w-8 h-8 rounded-full object-cover">
+                        <span class="username-display"></span>
+                        <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    
+                    <!-- Dropdown Menu -->
+                    <div id="profileMenu" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
+                        <button id="openProfile" class="block w-full text-left px-4 py-2 text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
                             Mi Perfil
                         </button>
-                        <span class="text-white username-display"></span>
-                        <button id="logoutBtn" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                        <hr class="border-gray-200 dark:border-gray-700">
+                        <button id="logoutBtn" class="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700">
                             Cerrar Sesión
                         </button>
                     </div>
                 </div>
-                <div class="logged-out-content">
-                    <button id="loginBtn" class="bg-blue-600 text-white px-4 py-2 rounded mr-2">Login</button>
-                    <button id="registerBtn" class="bg-green-600 text-white px-4 py-2 rounded">Register</button>
-                </div>
             </div>
             
-            <h1 class="text-3xl font-bold">Advanced Anime Search</h1>
-            <button id="toggleAdvanced" class="mt-2">Toggle Advanced Search</button>
+            <!-- Logged Out Content -->
+            <div class="logged-out-content">
+                <button id="loginBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 mr-2 transition-colors">
+                    Login
+                </button>
+                <button id="registerBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors">
+                    Register
+                </button>
+            </div>
         </div>
-    </header>
+        
+        <h1 class="text-3xl font-bold">Advanced Anime Search</h1>
+        <button id="toggleAdvanced" class="mt-2">Toggle Advanced Search</button>
+    </div>
+</header>
 
     <!-- Main Content -->
     <main class="container mx-auto p-4" role="main">
@@ -472,13 +523,13 @@
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
                         <h3 class="text-lg font-semibold mb-4 dark:text-white">Distribución por Tipo</h3>
-                        <div class="h-64">
+                        <div class="h-64 relative">
                             <canvas id="typeChart"></canvas>
                         </div>
                     </div>
                     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
                         <h3 class="text-lg font-semibold mb-4 dark:text-white">Puntuaciones</h3>
-                        <div class="h-64">
+                        <div class="h-64 relative">
                             <canvas id="scoreChart"></canvas>
                         </div>
                     </div>
