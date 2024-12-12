@@ -190,6 +190,37 @@
         .dark select option {
             background: #374151;
         }
+
+        .episode-card {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .episode-card:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Estilo para scrollbars personalizados */
+        .overflow-y-auto {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(59, 130, 246, 0.5) transparent;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background-color: rgba(59, 130, 246, 0.5);
+            border-radius: 3px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(59, 130, 246, 0.7);
+        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen">
@@ -362,7 +393,12 @@
             </div>
         </div>
         
-        <h1 class="text-3xl font-bold">Advanced Anime Search</h1>
+        <div class="flex items-center gap-4">
+            <h1 class="text-3xl font-bold cursor-pointer hover:text-blue-100 transition-colors duration-200" 
+                onclick="window.location.reload()">
+                Advanced Anime Search
+            </h1>
+        </div>
         <button id="toggleAdvanced" class="mt-2">Toggle Advanced Search</button>
     </div>
 </header>

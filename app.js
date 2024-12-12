@@ -1,8 +1,9 @@
 // Importar módulos
-import { Auth, DB } from './auth-db.js';
+import { Auth, DB, DEFAULT_PROFILE_IMAGE } from './auth-db.js';
 import { ThemeManager } from './theme-manager.js';
 import { VideoPlayer } from './video-player.js';
 import jQueryExtensions from './jquery-extensions.js';
+
 
 // Constants and State Management
 const JIKAN_API = 'https://api.jikan.moe/v4';
@@ -45,15 +46,9 @@ function initializeAuth() {
     // Handle login form submission
     $('#loginForm').on('submit', async function(e) {
         e.preventDefault();
-        try {
-            const username = this.username.value;
-            const password = this.password.value;
-            await Auth.login(username, password);
-            $('#loginModal').addClass('hidden').removeClass('flex');
-            showMessage('Login successful!', 'success');
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
+        const username = this.username.value;
+        const password = this.password.value;
+        await handleLogin(username, password);
     });
 
     // Handle register form submission
@@ -229,24 +224,51 @@ function initializeProfileComponents() {
     }
 }
 
-// Manejo de la imagen de perfil en el registro
 function initializeProfileImageHandlers() {
     const uploadImageBtn = document.getElementById('uploadImageBtn');
     const profileImageInput = document.getElementById('profileImage');
     const previewImage = document.getElementById('previewImage');
+    const userAvatar = document.getElementById('userAvatar'); // Añadir referencia al avatar
     
     if (uploadImageBtn && profileImageInput) {
         uploadImageBtn.addEventListener('click', function() {
             profileImageInput.click();
         });
 
-        profileImageInput.addEventListener('change', function(e) {
+        profileImageInput.addEventListener('change', async function(e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = async function(e) {
+                    const base64Image = e.target.result;
+                    
+                    // Actualizar todas las previsualizaciones
                     if (previewImage) {
-                        previewImage.src = e.target.result;
+                        previewImage.src = base64Image;
+                    }
+                    
+                    // Si el usuario está logueado, actualizar su imagen en la DB
+                    const user = Auth.getCurrentUser();
+                    if (user) {
+                        try {
+                            // Actualizar en la base de datos
+                            await DB.updateProfileImage(user.username, base64Image);
+                            
+                            // Actualizar el avatar en el header
+                            if (userAvatar) {
+                                userAvatar.src = base64Image;
+                            }
+                            
+                            // Actualizar el localStorage para mantener la persistencia
+                            const currentUser = Auth.getCurrentUser();
+                            currentUser.profileImage = base64Image;
+                            Auth._setCurrentUser(currentUser);
+                            
+                            showMessage('Profile image updated successfully!', 'success');
+                        } catch (error) {
+                            console.error('Error updating profile image:', error);
+                            showMessage('Error updating profile image', 'error');
+                        }
                     }
                 };
                 reader.readAsDataURL(file);
@@ -267,78 +289,102 @@ function initializeRegistrationForm() {
                 const username = this.username.value;
                 const email = this.email.value;
                 const password = this.password.value;
-                const profileImageInput = document.getElementById('profileImage');
                 const previewImage = document.getElementById('previewImage');
                 
-                let profileImage = previewImage?.src || "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
+                // Verificar que los campos no estén vacíos
+                if (!username || !email || !password) {
+                    throw new Error('All fields are required');
+                }
 
-                // Registrar usuario
-                await Auth.register(username, email, password, profileImage);
+                // Usar la imagen del preview si existe, si no usar la default
+                let profileImage = DEFAULT_PROFILE_IMAGE;
+                if (previewImage && previewImage.src !== DEFAULT_PROFILE_IMAGE) {
+                    profileImage = previewImage.src;
+                }
+
+                // Mostrar indicador de carga
+                showMessage('Registering user...', 'info');
+
+                // Registrar usuario con la imagen
+                const user = await Auth.register(username, email, password, profileImage);
                 
-                // Cerrar modal y mostrar mensaje
+                // Cerrar modal y limpiar formulario
                 const registerModal = document.getElementById('registerModal');
                 if (registerModal) {
                     registerModal.classList.add('hidden');
                     registerModal.classList.remove('flex');
+                    registerForm.reset();
                 }
                 
                 showMessage('Registration successful!', 'success');
                 
-                // Actualizar UI
+                // Actualizar UI y asegurarse de que la imagen se muestre
+                const userAvatar = document.getElementById('userAvatar');
+                if (userAvatar) {
+                    userAvatar.src = profileImage;
+                }
+                
                 updateAuthUI();
+
             } catch (error) {
-                showMessage(error.message, 'error');
+                console.error('Registration error:', error);
+                showMessage(error.message || 'Registration failed', 'error');
             }
         });
     }
 }
 
-// Actualizar UI cuando cambia el estado de autenticación
 function updateAuthUI() {
-    const isLoggedIn = Auth.isLoggedIn();
     const user = Auth.getCurrentUser();
-
     const loggedInContent = document.querySelector('.logged-in-content');
     const loggedOutContent = document.querySelector('.logged-out-content');
     const usernameDisplay = document.querySelector('.username-display');
     const userAvatar = document.getElementById('userAvatar');
 
-    if (loggedInContent) loggedInContent.classList.toggle('hidden', !isLoggedIn);
-    if (loggedOutContent) loggedOutContent.classList.toggle('hidden', isLoggedIn);
-
-    if (isLoggedIn && user) {
+    if (user) {
+        if (loggedInContent) loggedInContent.classList.remove('hidden');
+        if (loggedOutContent) loggedOutContent.classList.add('hidden');
         if (usernameDisplay) usernameDisplay.textContent = user.username;
         if (userAvatar) {
-            userAvatar.src = user.profileImage || "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
+            userAvatar.src = user.profileImage || DEFAULT_PROFILE_IMAGE;
         }
+        
+        // También actualizar la imagen en el modal de perfil si está abierto
+        const profileModalImage = document.querySelector('#profileModal img[alt="Profile"]');
+        if (profileModalImage) {
+            profileModalImage.src = user.profileImage || DEFAULT_PROFILE_IMAGE;
+        }
+    } else {
+        if (loggedInContent) loggedInContent.classList.add('hidden');
+        if (loggedOutContent) loggedOutContent.classList.remove('hidden');
     }
 }
 
-// Inicialización
-document.addEventListener('DOMContentLoaded', function() {
-    initializeProfileComponents();
-    initializeProfileImageHandlers();
-    initializeRegistrationForm();
-    updateAuthUI();
-});
+    // Inicialización
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeProfileComponents();
+        initializeProfileImageHandlers();
+        initializeRegistrationForm();
+        updateAuthUI();
+    });
 
-// Event listener para actualizaciones de estado de autenticación
-window.addEventListener('authStateChanged', updateAuthUI);
+    // Event listener para actualizaciones de estado de autenticación
+    window.addEventListener('authStateChanged', updateAuthUI);
 
-// Funciones para mostrar y ocultar el loading
-function showLoading() {
-    const $loading = $('.loading');
-    $loading.removeClass('hidden').addClass('flex');
-    // Prevenir scroll mientras está cargando
-    $('body').css('overflow', 'hidden');
-}
+    // Funciones para mostrar y ocultar el loading
+    function showLoading() {
+        const $loading = $('.loading');
+        $loading.removeClass('hidden').addClass('flex');
+        // Prevenir scroll mientras está cargando
+        $('body').css('overflow', 'hidden');
+    }
 
-function hideLoading() {
-    const $loading = $('.loading');
-    $loading.addClass('hidden').removeClass('flex');
-    // Restaurar scroll
-    $('body').css('overflow', '');
-}
+    function hideLoading() {
+        const $loading = $('.loading');
+        $loading.addClass('hidden').removeClass('flex');
+        // Restaurar scroll
+        $('body').css('overflow', '');
+    }
 
 // Search Implementation
 async function searchAnime(page = 1) {
@@ -346,14 +392,17 @@ async function searchAnime(page = 1) {
     
     try {
         let url;
-        let data;
         
         // Si hay parámetros de búsqueda, usar la búsqueda normal
         if (lastSearchParams && (lastSearchParams.q || lastSearchParams.type || lastSearchParams.status || 
             lastSearchParams.rating || lastSearchParams.genres || lastSearchParams.genres_exclude)) {
-            const params = lastSearchParams;
-            params.page = page;
-            params.limit = 12;
+            const params = {
+                ...lastSearchParams,
+                page,
+                limit: 12,
+                order_by: lastSearchParams.order_by || 'start_date',  // Por defecto ordenar por fecha
+                sort: 'desc'  // Más recientes primero
+            };
             
             const cacheKey = JSON.stringify({...params, page});
             if (searchCache.has(cacheKey)) {
@@ -369,12 +418,16 @@ async function searchAnime(page = 1) {
             const queryString = new URLSearchParams(params).toString();
             url = `${JIKAN_API}/anime?${queryString}`;
         } else {
-            // Si no hay parámetros, mostrar la temporada actual
-            url = `${JIKAN_API}/seasons/now?page=${page}&limit=12`;
+            // Si no hay parámetros, mostrar la temporada actual ordenada por fecha
+            url = `${JIKAN_API}/seasons/now?page=${page}&limit=12&order_by=start_date&sort=desc`;
         }
 
         const response = await fetch(url);
-        data = await response.json();
+        const data = await $.ajax({
+            url: url,
+            method: 'GET',
+            dataType: 'json'
+        });
 
         // Rate limiting handling
         if (response.status === 429) {
@@ -520,6 +573,21 @@ function displayResults(animes) {
                 currentView === 'grid' ? 'animeCardTemplate' : 'animeListTemplate'
             ).content.cloneNode(true));
 
+            // Asegurarse de que el botón de Quick Preview siempre esté presente
+            if (currentView === 'grid') {
+                const $previewButton = $template.find('.quick-preview-btn');
+                if (!$previewButton.length) {
+                    const $imageContainer = $template.find('.relative.group');
+                    $imageContainer.append(`
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 flex items-center justify-center">
+                            <button class="quick-preview-btn opacity-0 group-hover:opacity-100 bg-blue-600 text-white px-4 py-2 rounded transition-all duration-300">
+                                Quick Preview
+                            </button>
+                        </div>
+                    `);
+                }
+            }
+
             populateTemplate($template, anime);
             
             const $item = $($template);
@@ -539,16 +607,25 @@ function displayResults(animes) {
     });
 }
 
+
 // Template Population
 function populateTemplate($template, anime) {
     $template.find('img').attr('src', anime.images.jpg.large_image_url);
     $template.find('.title').text(anime.title);
     $template.find('.type').text(anime.type || 'N/A');
     $template.find('.score').text(`★ ${anime.score || 'N/A'}`);
-        $template.find('.details-btn').on('click', function(e) {
+    
+    // Asegurar que todos los botones tienen los event listeners correctos
+    $template.find('.details-btn').on('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
         window.open(anime.url, '_blank');
+    });
+
+    $template.find('.quick-preview-btn').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showQuickPreview(anime);
     });
     
     const $container = $template.find('.anime-card, .anime-list-item');
@@ -556,8 +633,8 @@ function populateTemplate($template, anime) {
     
     // Add hover effects and event listeners
     $container.hover(
-        function() { $(this).find('.details-btn').addClass('scale-105'); },
-        function() { $(this).find('.details-btn').removeClass('scale-105'); }
+        function() { $(this).find('.details-btn, .quick-preview-btn').addClass('scale-105'); },
+        function() { $(this).find('.details-btn, .quick-preview-btn').removeClass('scale-105'); }
     );
 }
 
@@ -569,6 +646,10 @@ function showQuickPreview(anime) {
         .html(previewHtml)
         .removeClass('hidden')
         .addClass('flex fade-in');
+
+    // Inicializar tabs y cargar contenido
+    initializePreviewTabs();
+    loadEpisodesAndStreaming(anime.mal_id);
 
     // Event listeners para cerrar
     $preview.on('click', function(e) {
@@ -601,46 +682,403 @@ function closeQuickPreview() {
 
 function createQuickPreviewHtml(anime) {
     return `
-        <div class="bg-white dark:bg-gray-900 rounded-lg max-w-4xl w-full mx-4 p-6 shadow-xl">
-            <div class="flex justify-between items-start mb-4">
-                <h2 class="text-2xl font-bold dark:text-white">${anime.title}</h2>
-                <button class="close-preview text-gray-500 hover:text-gray-700 dark:text-gray-400 
-                              dark:hover:text-gray-200 text-2xl">×</button>
-            </div>
-            <div class="flex flex-col md:flex-row gap-4">
-                <img src="${anime.images.jpg.large_image_url}" 
-                     alt="${anime.title}" 
-                     class="w-full md:w-1/3 h-auto object-cover rounded">
-                <div class="flex-1 space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <p class="dark:text-white"><strong>Type:</strong> ${anime.type || 'N/A'}</p>
-                        <p class="dark:text-white"><strong>Episodes:</strong> ${anime.episodes || 'N/A'}</p>
-                        <p class="dark:text-white"><strong>Status:</strong> ${anime.status || 'N/A'}</p>
-                        <p class="dark:text-white"><strong>Score:</strong> ${anime.score || 'N/A'}</p>
+        <div class="fixed inset-0 flex items-center justify-center p-4 bg-black bg-opacity-50">
+            <div class="bg-white dark:bg-gray-900 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+                <div class="flex justify-between items-start p-4 border-b dark:border-gray-700">
+                    <h2 class="text-2xl font-bold dark:text-white">${anime.title}</h2>
+                    <button class="close-preview text-gray-500 hover:text-gray-700 dark:text-gray-400 
+                                dark:hover:text-gray-200 text-2xl">×</button>
+                </div>
+                
+                <div class="overflow-y-auto p-4" style="max-height: calc(90vh - 4rem);">
+                    <div class="flex flex-col md:flex-row gap-4 mb-4">
+                        <img src="${anime.images.jpg.large_image_url}" 
+                             alt="${anime.title}" 
+                             class="w-full md:w-1/3 h-auto object-cover rounded">
+                        <div class="flex-1 space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <p class="dark:text-white"><strong>Type:</strong> ${anime.type || 'N/A'}</p>
+                                <p class="dark:text-white"><strong>Episodes:</strong> ${anime.episodes || 'N/A'}</p>
+                                <p class="dark:text-white"><strong>Status:</strong> ${anime.status || 'N/A'}</p>
+                                <p class="dark:text-white"><strong>Score:</strong> ${anime.score || 'N/A'}</p>
+                            </div>
+                            <div class="mt-4">
+                                <h3 class="font-bold text-lg mb-2 dark:text-white">Synopsis</h3>
+                                <p class="text-gray-600 dark:text-gray-300">
+                                    ${anime.synopsis || 'No synopsis available.'}
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mt-4">
-                        <h3 class="font-bold text-lg mb-2 dark:text-white">Synopsis</h3>
-                        <p class="text-gray-600 dark:text-gray-300 line-clamp-4">
-                            ${anime.synopsis || 'No synopsis available.'}
-                        </p>
-                    </div>
-                    <div class="flex gap-2 mt-4">
-                        <a href="${anime.url}" target="_blank" 
-                           class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors">
-                            View on MAL
-                        </a>
-                        ${anime.trailer ? `
-                            <button class="watch-preview bg-green-600 text-white px-4 py-2 rounded 
-                                         hover:bg-green-700 transition-colors">
-                                Watch Trailer
-                            </button>
-                        ` : ''}
+
+                    <!-- Tabs para episodios y streaming -->
+                    <div class="border-t dark:border-gray-700 pt-4">
+                        <div class="flex space-x-4 mb-4">
+                            <button class="tab-button active px-4 py-2 rounded-lg bg-blue-600 text-white" 
+                                    data-tab="episodes">Episodes</button>
+                            <button class="tab-button px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700" 
+                                    data-tab="streaming">Streaming Links</button>
+                        </div>
+
+                        <!-- Contenedor de episodios -->
+                        <div id="episodesContent" class="tab-content active">
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
+                                <div class="loading-episodes text-center py-4">
+                                    <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+                                    <p class="mt-2 dark:text-white">Loading episodes...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contenedor de links de streaming -->
+                        <div id="streamingContent" class="tab-content hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
+                                <div class="loading-streaming text-center py-4">
+                                    <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+                                    <p class="mt-2 dark:text-white">Loading streaming links...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     `;
 }
+
+async function loadEpisodesAndStreaming(animeId) {
+    try {
+        // Cargar información de streaming
+        const streamingResponse = await fetch(`${JIKAN_API}/anime/${animeId}/streaming`);
+        const streamingData = await streamingResponse.json();
+
+        // Cargar episodios
+        const episodesResponse = await fetch(`${JIKAN_API}/anime/${animeId}/episodes`);
+        const episodesData = await episodesResponse.json();
+
+        // Actualizar contenido de streaming
+        const $streamingContent = $('#streamingContent');
+        if (streamingData.data && streamingData.data.length > 0) {
+            const streamingHtml = streamingData.data.map(link => `
+                <a href="${link.url}" target="_blank" 
+                   class="flex items-center p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow">
+                    <span class="flex-1 dark:text-white">${link.name}</span>
+                    <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                </a>
+            `).join('');
+            $streamingContent.html(streamingHtml || '<p class="text-center dark:text-white">No official streaming links available.</p>');
+        } else {
+            $streamingContent.html('<p class="text-center dark:text-white">No official streaming links available.</p>');
+        }
+
+        // Actualizar contenido de episodios
+        const $episodesContent = $('#episodesContent');
+        if (episodesData.data && episodesData.data.length > 0) {
+            const episodesHtml = episodesData.data.map(episode => `
+                <div class="episode-card bg-white dark:bg-gray-800 rounded-lg shadow p-4 hover:shadow-lg transition-shadow">
+                    <h4 class="font-semibold dark:text-white">Episode ${episode.mal_id}</h4>
+                    <p class="text-sm text-gray-600 dark:text-gray-300 mb-2 h-12 overflow-hidden">
+                        ${episode.title || 'No title'}
+                    </p>
+                    <div class="flex gap-2">
+                        <button class="watch-episode-btn flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 
+                                    transition-colors flex items-center justify-center gap-2"
+                                data-episode-id="${episode.mal_id}">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            </svg>
+                            Watch
+                        </button>
+                        <button class="episode-info-btn p-2 text-gray-600 hover:text-blue-600 dark:text-gray-400 
+                                    dark:hover:text-blue-400 transition-colors"
+                                data-episode-id="${episode.mal_id}"
+                                title="Episode Information">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            $episodesContent.html(episodesHtml);
+
+            // Agregar event listeners para los botones de episodios
+            $episodesContent.find('.watch-episode-btn').on('click', function() {
+                const episodeId = $(this).data('episode-id');
+                handlePlayEpisode(episodeId, animeId);
+            });
+
+            // Event listeners para los botones de información
+            $episodesContent.find('.episode-info-btn').on('click', async function() {
+                const episodeId = $(this).data('episode-id');
+                try {
+                    const response = await fetch(`${JIKAN_API}/anime/${animeId}/episodes/${episodeId}`);
+                    const data = await response.json();
+                    if (data.data) {
+                        showMessage(`Episode ${episodeId}: ${data.data.title}`, 'info');
+                    }
+                } catch (error) {
+                    console.error('Error fetching episode info:', error);
+                    showMessage('Error loading episode information', 'error');
+                }
+            });
+        } else {
+            $episodesContent.html('<p class="text-center dark:text-white">No episodes information available.</p>');
+        }
+
+    } catch (error) {
+        console.error('Error loading episodes and streaming:', error);
+        $('#episodesContent, #streamingContent').html(
+            '<p class="text-center text-red-500">Error loading content. Please try again later.</p>'
+        );
+    }
+}
+
+// Estilos adicionales necesarios
+const styles = `
+    .episode-card {
+        transition: all 0.2s ease-in-out;
+    }
+
+    .episode-card:hover {
+        transform: translateY(-2px);
+    }
+
+    .watch-episode-btn:hover svg {
+        transform: scale(1.1);
+    }
+
+    .episode-info-btn:hover svg {
+        transform: rotate(15deg);
+    }
+
+    .episode-card .episode-info-btn,
+    .episode-card .watch-episode-btn {
+        transition: all 0.2s ease-in-out;
+    }
+`;
+
+// Agregar estilos al documento
+if (!document.getElementById('episodeStyles')) {
+    const styleElement = document.createElement('style');
+    styleElement.id = 'episodeStyles';
+    styleElement.textContent = styles;
+    document.head.appendChild(styleElement);
+}
+
+// Función para inicializar los tabs
+function initializePreviewTabs() {
+    $('.tab-button').on('click', function() {
+        const tabId = $(this).data('tab');
+        
+        // Actualizar botones
+        $('.tab-button').removeClass('bg-blue-600 text-white').addClass('hover:bg-blue-100 dark:hover:bg-gray-700');
+        $(this).addClass('bg-blue-600 text-white').removeClass('hover:bg-blue-100 dark:hover:bg-gray-700');
+        
+        // Actualizar contenido
+        $('.tab-content').addClass('hidden');
+        $(`#${tabId}Content`).removeClass('hidden');
+    });
+}
+
+async function handlePlayEpisode(episodeId, animeId) {
+    try {
+        // Obtener videos disponibles
+        const videosResponse = await fetch(`${JIKAN_API}/anime/${animeId}/videos/episodes`);
+        const videosData = await videosResponse.json();
+        
+        // Obtener información del episodio
+        const episodeResponse = await fetch(`${JIKAN_API}/anime/${animeId}/episodes`);
+        const episodeData = await episodeResponse.json();
+
+        // Obtener links externos como respaldo
+        const externalResponse = await fetch(`${JIKAN_API}/anime/${animeId}/external`);
+        const externalData = await externalResponse.json();
+        
+        if (episodeData.data) {
+            // Crear el modal con reproductor y links
+            const playerHtml = `
+                <div id="videoPlayerModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-gray-800 w-full max-w-4xl rounded-lg overflow-hidden shadow-xl">
+                        <!-- Barra superior -->
+                        <div class="flex justify-between items-center bg-blue-600 p-4">
+                            <h3 class="text-white font-semibold truncate">
+                                Episode ${episodeId} - ${episodeData.data.title || 'No title'}
+                            </h3>
+                            <button id="closePlayer" class="text-white hover:text-gray-200 transition-colors">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <!-- Contenedor del reproductor -->
+                        <div class="relative bg-black" style="padding-top: 56.25%">
+                            ${videosData.data?.episodes?.length > 0 ? `
+                                <iframe
+                                    src="${videosData.data.episodes.find(ep => ep.mal_id === episodeId)?.url || videosData.data.episodes[0].url}"
+                                    class="absolute inset-0 w-full h-full"
+                                    allowfullscreen
+                                    frameborder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                ></iframe>
+                            ` : `
+                                <div class="absolute inset-0 flex items-center justify-center bg-gray-900">
+                                    <div class="text-center text-gray-400">
+                                        <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <p>No video available</p>
+                                    </div>
+                                </div>
+                            `}
+                        </div>
+
+                        <!-- Sección de videos disponibles -->
+                        <div class="p-4 overflow-y-auto max-h-60">
+                            ${videosData.data?.episodes?.length > 0 ? `
+                                <div class="mb-4">
+                                    <h4 class="text-lg font-semibold mb-2 dark:text-white">Available Episodes</h4>
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        ${videosData.data.episodes.map(video => `
+                                            <button class="episode-button p-2 text-sm bg-gray-100 dark:bg-gray-700 
+                                                         rounded hover:bg-blue-100 dark:hover:bg-blue-900 
+                                                         transition-colors truncate
+                                                         ${video.mal_id === episodeId ? 'bg-blue-100 dark:bg-blue-900' : ''}"
+                                                    data-url="${video.url}"
+                                                    title="${video.title}">
+                                                ${video.episode} - ${video.title}
+                                            </button>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <!-- Trailers disponibles -->
+                            ${videosData.data?.promo?.length > 0 ? `
+                                <div class="mb-4">
+                                    <h4 class="text-lg font-semibold mb-2 dark:text-white">Trailers</h4>
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        ${videosData.data.promo.map(video => `
+                                            <button class="trailer-button p-2 text-sm bg-gray-100 dark:bg-gray-700 
+                                                         rounded hover:bg-blue-100 dark:hover:bg-blue-900 
+                                                         transition-colors truncate"
+                                                    data-url="${video.trailer.embed_url}"
+                                                    title="${video.title}">
+                                                ${video.title}
+                                            </button>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <!-- Links externos como respaldo -->
+                            <div class="mt-4">
+                                <h4 class="text-lg font-semibold mb-2 dark:text-white">External Links</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    ${externalData.data?.map(link => `
+                                        <a href="${link.url}" target="_blank" 
+                                           class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 
+                                                  rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                                            <span class="flex items-center dark:text-white text-sm">
+                                                <svg class="w-4 h-4 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                </svg>
+                                                ${link.name}
+                                            </span>
+                                        </a>
+                                    `).join('') || '<p class="text-gray-500 dark:text-gray-400 text-center">No external links available</p>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Agregar el modal al DOM
+            $('body').append(playerHtml);
+
+            // Event listeners
+            $('#closePlayer').on('click', () => {
+                $('#videoPlayerModal').remove();
+                $(document).off('keydown.videoPlayer');
+            });
+
+            // Cambiar episodio/trailer
+            $('.episode-button, .trailer-button').on('click', function() {
+                const videoUrl = $(this).data('url');
+                const $iframe = $('#videoPlayerModal iframe');
+                
+                // Actualizar la URL del iframe
+                if ($iframe.length) {
+                    $iframe.attr('src', videoUrl);
+                }
+
+                // Actualizar estilo del botón activo
+                $(this).siblings().removeClass('bg-blue-100 dark:bg-blue-900');
+                $(this).addClass('bg-blue-100 dark:bg-blue-900');
+            });
+
+            // Manejar tecla Escape
+            $(document).on('keydown.videoPlayer', (e) => {
+                if (e.key === 'Escape') {
+                    $('#videoPlayerModal').remove();
+                    $(document).off('keydown.videoPlayer');
+                }
+            });
+
+            // Clic fuera del modal para cerrar
+            $('#videoPlayerModal').on('click', function(e) {
+                if (e.target === this) {
+                    $(this).remove();
+                    $(document).off('keydown.videoPlayer');
+                }
+            });
+
+            showMessage(`Playing episode ${episodeId}`, 'info');
+        } else {
+            showMessage('Episode information not available', 'warning');
+        }
+    } catch (error) {
+        console.error('Error loading episode:', error);
+        showMessage('Error loading episode', 'error');
+    }
+}
+
+// Agregar estilos necesarios para el reproductor
+const playerStyles = `
+    .video-player-modal {
+        background: rgba(0, 0, 0, 0.9);
+    }
+    
+    .video-progress {
+        cursor: pointer;
+    }
+    
+    .video-progress:hover .progress-bar {
+        height: 4px;
+    }
+    
+    .control-button {
+        transition: all 0.2s ease;
+    }
+    
+    .control-button:hover {
+        transform: scale(1.1);
+    }
+`;
+
+// Agregar estilos al documento
+$('<style>').text(playerStyles).appendTo('head');
 
 // Handle Watch Button Click
 async function handleWatch(anime) {
@@ -701,11 +1139,17 @@ function collectSearchParams() {
         type: $('#typeFilter').val(),
         status: $('#statusFilter').val(),
         rating: $('#ratingFilter').val(),
-        order_by: $('#sortFilter').val(),
-        sort: 'desc',
+        order_by: 'start_date', // Siempre ordenar por fecha
+        sort: 'desc', // Más recientes primero
         min_score: $('#scoreSlider').slider('values', 0),
         max_score: $('#scoreSlider').slider('values', 1),
     };
+
+    // Solo agregar order_by del select si específicamente se selecciona
+    const selectedSort = $('#sortFilter').val();
+    if (selectedSort && selectedSort !== 'start_date') {
+        params.order_by = selectedSort;
+    }
 
     // Si el filtro de favoritos está activo
     if ($('#favoritesFilter').val() === 'favorites') {
@@ -778,21 +1222,40 @@ function initializeUI() {
         }
     });
 
-    // Initialize autocomplete
+    // Initialize autocomplete with improved behavior
     $("#searchInput").autocomplete({
         source: async function(request, response) {
             try {
-                const res = await fetch(`${JIKAN_API}/anime?q=${request.term}&limit=5`);
+                const res = await fetch(`${JIKAN_API}/anime?q=${request.term}&limit=5&order_by=start_date&sort=desc`);
                 const data = await res.json();
-                response(data.data.map(anime => ({
+                const animes = data.data.map(anime => ({
                     label: anime.title,
                     value: anime.title,
-                    id: anime.mal_id
-                })));
+                    id: anime.mal_id,
+                    data: anime
+                }));
+
+                // Check for exact match
+                const exactMatch = animes.find(a => 
+                    a.label.toLowerCase() === request.term.toLowerCase()
+                );
+
+                if (exactMatch) {
+                    // Si hay coincidencia exacta, mostrar solo ese resultado
+                    response([exactMatch]);
+                    // Y actualizar la búsqueda principal
+                    displayResults([exactMatch.data]);
+                } else {
+                    response(animes);
+                }
             } catch (error) {
                 console.error('Autocomplete error:', error);
                 response([]);
             }
+        },
+        select: function(event, ui) {
+            // Cuando se selecciona un anime, mostrar solo ese
+            displayResults([ui.item.data]);
         },
         minLength: 2,
         classes: {

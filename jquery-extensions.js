@@ -1,5 +1,5 @@
 export const initJQueryExtensions = () => {
-    // jQuery Animation Extensions
+    // jQuery Effects Extensions
     $.fn.animateCard = function(options = {}) {
         const defaults = {
             duration: 400,
@@ -27,6 +27,59 @@ export const initJQueryExtensions = () => {
                 });
             }, settings.duration);
         });
+    };
+
+    // NUEVO: Extensión para slide personalizado
+    $.fn.slideEffect = function(direction = 'up', options = {}) {
+        const defaults = {
+            duration: 400,
+            easing: 'swing',
+            complete: null
+        };
+        const settings = $.extend({}, defaults, options);
+
+        return this.each(function() {
+            const $element = $(this);
+            const height = $element.height();
+            
+            $element.css('overflow', 'hidden');
+
+            if (direction === 'up') {
+                $element.animate({ height: 0 }, {
+                    duration: settings.duration,
+                    easing: settings.easing,
+                    complete: function() {
+                        $element.hide();
+                        if (settings.complete) settings.complete.call(this);
+                    }
+                });
+            } else {
+                $element.show().css('height', 0).animate({ height: height }, {
+                    duration: settings.duration,
+                    easing: settings.easing,
+                    complete: settings.complete
+                });
+            }
+        });
+    };
+
+    // NUEVO: Extensión para stop con limpieza
+    $.fn.stopAndClear = function(clearQueue = true, jumpToEnd = true) {
+        return this.each(function() {
+            const $element = $(this);
+            $element.stop(clearQueue, jumpToEnd);
+            if (jumpToEnd) {
+                $element.css('transition', 'none');
+                setTimeout(() => {
+                    $element.css('transition', '');
+                }, 0);
+            }
+        });
+    };
+
+    // NUEVO: Extensión para siblings con filtrado
+    $.fn.filteredSiblings = function(filter) {
+        return this.siblings(filter).addBack(filter);
     };
 
     // jQuery CSS Extensions
@@ -72,6 +125,20 @@ export const initJQueryExtensions = () => {
                 $(this).remove();
             });
         });
+    };
+
+    // NUEVO: Extensión noConflict personalizada
+    $.fn.safeMode = function() {
+        const $elements = this;
+        const jQuery = $;
+        
+        return {
+            execute: function(callback) {
+                const $ = jQuery;
+                callback.call($elements, $);
+                return $elements;
+            }
+        };
     };
 
     // Enhanced Tooltip

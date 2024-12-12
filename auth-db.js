@@ -1,19 +1,23 @@
-let db = null;
-
 const DEFAULT_PROFILE_IMAGE = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9ZAV6OLHHc8z7I4OaVD0ljzGdeFP0tGreDi3yMFwLBZRXWt7Nh93hC8uRt-UnawErZBw&usqp=CAU";
+
+let dbInitPromise = null;
+let db = null; // Add this line to declare the db variable
 
 const DB = {
     async init() {
-        return new Promise((resolve, reject) => {
+        if (dbInitPromise) return dbInitPromise;
+
+        dbInitPromise = new Promise((resolve, reject) => {
             if (db) {
                 resolve(db);
                 return;
             }
 
-            const request = indexedDB.open('animeDB', 2); // Increased version for schema update
+            const request = indexedDB.open('animeDB', 2);
 
             request.onerror = () => {
                 console.error('Error opening database:', request.error);
+                dbInitPromise = null; // Reset promise on error
                 reject(request.error);
             };
 
@@ -29,7 +33,6 @@ const DB = {
                     const userStore = database.createObjectStore('users', { keyPath: 'username' });
                     userStore.createIndex('username_idx', 'username', { unique: true });
                     userStore.createIndex('email', 'email', { unique: true });
-                    // Add profileImage field
                     userStore.createIndex('profileImage', 'profileImage', { unique: false });
                 }
 
@@ -39,8 +42,10 @@ const DB = {
                 }
             };
         });
-    },
 
+        return dbInitPromise;
+    },
+    
     async addFavorite(animeData) {
         const user = Auth.getCurrentUser();
         if (!user) throw new Error('User must be logged in');
@@ -123,19 +128,10 @@ const Auth = {
             const database = await DB.init();
             
             return new Promise((resolve, reject) => {
-                const transaction = database.transaction(['users'], 'readwrite');
-                const store = transaction.objectStore('users');
-                
-                transaction.oncomplete = () => {
-                    console.log('Transaction completed successfully');
-                };
-                
-                transaction.onerror = (event) => {
-                    console.error('Transaction error:', event.target.error);
-                    reject(new Error('Transaction failed'));
-                };
-                
                 try {
+                    const transaction = database.transaction(['users'], 'readwrite');
+                    const store = transaction.objectStore('users');
+                    
                     const user = {
                         username,
                         email,
@@ -143,14 +139,25 @@ const Auth = {
                         profileImage: profileImage || DEFAULT_PROFILE_IMAGE,
                         createdAt: new Date().toISOString()
                     };
+    
+                    transaction.oncomplete = () => {
+                        console.log('Transaction completed successfully');
+                        this._setCurrentUser(user);
+                        resolve(user);
+                    };
                     
-                    store.add(user);
-                    
-                    this._setCurrentUser(user);
-                    resolve(user);
-                    console.log('Registration successful');
+                    transaction.onerror = (event) => {
+                        console.error('Transaction error:', event.target.error);
+                        reject(event.target.error);
+                    };
+    
+                    const request = store.add(user);
+                    request.onerror = (event) => {
+                        console.error('Store error:', event.target.error);
+                        reject(event.target.error);
+                    };
                 } catch (error) {
-                    console.error('Error during store operations:', error);
+                    console.error('Error during transaction:', error);
                     reject(error);
                 }
             });
@@ -224,4 +231,4 @@ window.addEventListener('unhandledrejection', function(event) {
     console.error('Unhandled promise rejection:', event.reason);
 });
 
-export { DB, Auth };
+export { DB, Auth, DEFAULT_PROFILE_IMAGE };
