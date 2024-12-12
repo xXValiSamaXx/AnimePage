@@ -889,7 +889,7 @@ function initializePreviewTabs() {
 async function handlePlayEpisode(episodeId, animeId) {
     try {
         // Obtener videos disponibles
-        const videosResponse = await fetch(`${JIKAN_API}/anime/${animeId}/videos/episodes`);
+        const videosResponse = await fetch(`${JIKAN_API}/anime/${animeId}/videos`);
         const videosData = await videosResponse.json();
         
         // Obtener información del episodio
